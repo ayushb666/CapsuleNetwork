@@ -49,13 +49,12 @@ def primaryCaps(conv_tensor, kernel_size, no_of_kernels, stride=[1, 1], padding=
 
 
 def fully_connected_layer(u_vector, output_num_capsules, output_capsule_length):
-    b_size = u_vector.shape[0].value
     number_input_capsules = u_vector.shape[1].value
     input_capsule_length = u_vector.shape[2].value
     u_vector = tf.expand_dims(u_vector, 2)
     conversionMatrix = tf.Variable(tf.random_normal([number_input_capsules, input_capsule_length, output_num_capsules*output_capsule_length]))
-    conversionMatrix = tf.tile(tf.expand_dims(conversionMatrix, 0), [b_size, 1, 1, 1])
-    uhat_vector = tf.reshape(tf.matmul(u_vector, conversionMatrix), shape=[b_size, number_input_capsules, output_num_capsules, output_capsule_length])
+    conversionMatrix = tf.tile(tf.expand_dims(conversionMatrix, 0), [batch_size, 1, 1, 1])
+    uhat_vector = tf.reshape(tf.matmul(u_vector, conversionMatrix), shape=[-1, number_input_capsules, output_num_capsules, output_capsule_length])
     b_values = tf.Variable(tf.zeros(shape=[1, number_input_capsules, output_num_capsules, 1]))
     v_vector = routing(uhat_vector, b_values)
     return v_vector
@@ -95,8 +94,8 @@ saver = tf.train.Saver()
 
 
 with tf.Session() as sess:
-    train = True
-    if train:
+    isTraining = True
+    if isTraining:
         sess.run(tf.global_variables_initializer())
         for step in range(iterations):
             batch_x, batch_y = data.train.next_batch(batch_size)
@@ -108,7 +107,7 @@ with tf.Session() as sess:
         saver.restore(sess, "./tmp/model.ckpt")
         print('Model Restored')
 
-    test_x, test_y = data.test.images, data.test.labels
+    test_x, test_y = data.test.next_batch(batch_size)
     acc = sess.run(accuracy, feed_dict={X: test_x, y: test_y})
     print(acc)
 
