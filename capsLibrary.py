@@ -9,11 +9,12 @@ from __future__ import print_function
 from __future__ import division
 from __future__ import absolute_import
 import tensorflow as tf
+import os
 from tensorflow.examples.tutorials.mnist import input_data
 
 data = input_data.read_data_sets('./data/mnist', one_hot=True)
 batch_size = 64
-iterations = 50
+epochs = 20
 number_of_routing = 2
 learning_rate = 1e-3
 lam = 0.5
@@ -22,8 +23,7 @@ mmin = 0.1
 
 def squash(capsule):
     norm = tf.norm(capsule, axis=2)
-    factor = tf.divide(norm, tf.add(1.0, tf.square(norm)))
-    factor = tf.expand_dims(factor, 2)
+    factor = tf.expand_dims(tf.divide(norm, tf.add(1.0, tf.square(norm))), 2)
     return tf.multiply(capsule, factor)
 
 
@@ -53,7 +53,7 @@ def fully_connected_layer(u_vector, output_num_capsules, output_capsule_length):
     input_capsule_length = u_vector.shape[2].value
     u_vector = tf.expand_dims(u_vector, 2)
     conversionMatrix = tf.Variable(tf.random_normal([number_input_capsules, input_capsule_length, output_num_capsules*output_capsule_length]))
-    conversionMatrix = tf.tile(tf.expand_dims(conversionMatrix, 0), [batch_size, 1, 1, 1])
+    conversionMatrix = tf.tile(tf.expand_dims(conversionMatrix, 0), [tf.shape(u_vector)[0], 1, 1, 1])
     uhat_vector = tf.reshape(tf.matmul(u_vector, conversionMatrix), shape=[-1, number_input_capsules, output_num_capsules, output_capsule_length])
     b_values = tf.Variable(tf.zeros(shape=[1, number_input_capsules, output_num_capsules, 1]))
     v_vector = routing(uhat_vector, b_values)
@@ -96,18 +96,26 @@ saver = tf.train.Saver()
 with tf.Session() as sess:
     isTraining = True
     if isTraining:
-        sess.run(tf.global_variables_initializer())
-        for step in range(iterations):
-            batch_x, batch_y = data.train.next_batch(batch_size)
-            _, l = sess.run([train, loss], feed_dict={X: batch_x, y: batch_y})
-            print('Step: {}, Loss: {}'.format(step, l))
-        save_path = saver.save(sess, "./tmp/model.ckpt")
+        if os.path.exists('./data/model.ckpt'):
+            saver.restore(sess, "./data/model.ckpt")
+            print('Model Restored')
+        else:
+            sess.run(tf.global_variables_initializer())
+        num_batch = int(60000/batch_size)
+        for step in range(epochs):
+            for batch in range(num_batch):
+                batch_x, batch_y = data.train.next_batch(batch_size)
+                sess.run(train, feed_dict={X: batch_x, y: batch_y})
+            print('iteration {} completed'.format(step))
+        save_path = saver.save(sess, "./data/model{}.ckpt".format(step))
+        print('Training Completed')
         print('Model Saved')
     else:
-        saver.restore(sess, "./tmp/model.ckpt")
+        saver.restore(sess, "./data/model.ckpt")
         print('Model Restored')
 
-    test_x, test_y = data.test.next_batch(batch_size)
+    # test_x, test_y = data.test.images, data.test.labels
+    test_x, test_y = data.test.next_batch(256)
     acc = sess.run(accuracy, feed_dict={X: test_x, y: test_y})
     print(acc)
 
