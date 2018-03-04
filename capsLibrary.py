@@ -12,11 +12,17 @@ import tensorflow as tf
 import os
 from tensorflow.examples.tutorials.mnist import input_data
 
+# Also Fell like code is a bit slow and need to be improved
+
 data = input_data.read_data_sets('./data/mnist', one_hot=True)
-batch_size = 64
-epochs = 20
-number_of_routing = 2
-learning_rate = 1e-3
+
+# Configurations
+BATCH_SIZE = 64
+EPOCHS = 1
+NUMBER_OF_ROUTING = 2
+LEARNING_RATE = 1e-3
+
+# Parameters used similar to in research paper
 lam = 0.5
 mplus = 0.9
 mmin = 0.1
@@ -28,7 +34,7 @@ def squash(capsule):
 
 
 def routing(uhat_vector, b_values):
-    for _ in range(number_of_routing):
+    for _ in range(NUMBER_OF_ROUTING):
         c_values = tf.nn.softmax(b_values, 1)
         s_vector = tf.reduce_sum(tf.multiply(c_values, uhat_vector), axis=1)
         v_vector = squash(capsule=s_vector)
@@ -82,40 +88,46 @@ u_vector = primaryCaps(conv_tensor, kernel_size=[9, 9], no_of_kernels=256, capsu
 v_vector = fully_connected_layer(u_vector, 10, 16)
 probabilities = get_prob(v_vector)
 
+# Still not added the reconstruction Loss
+
 loss = tf.reduce_sum(tf.add(tf.multiply(y, tf.square(tf.maximum(0.0, mplus - probabilities))), lam * tf.multiply((1 - y), tf.square(tf.maximum(0.0, probabilities - mmin)))))
-train = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
+train = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE).minimize(loss)
 
 result = tf.argmax(probabilities, axis=1)
 actual = tf.argmax(y, axis=1)
 correct_prediction = tf.equal(result, actual)
-accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+accuracy = tf.reduce_sum(tf.cast(correct_prediction, tf.float32))
 
 saver = tf.train.Saver()
 
 
 with tf.Session() as sess:
-    isTraining = True
+    isTraining = False
     if isTraining:
         if os.path.exists('./data/model.ckpt'):
             saver.restore(sess, "./data/model.ckpt")
             print('Model Restored')
         else:
             sess.run(tf.global_variables_initializer())
-        num_batch = int(60000/batch_size)
-        for step in range(epochs):
+        num_batch = int(data.train.num_examples / BATCH_SIZE)
+        for step in range(EPOCHS):
             for batch in range(num_batch):
-                batch_x, batch_y = data.train.next_batch(batch_size)
+                batch_x, batch_y = data.train.next_batch(BATCH_SIZE)
                 sess.run(train, feed_dict={X: batch_x, y: batch_y})
+                print('Completed Batch: {}'.format(batch))
             print('iteration {} completed'.format(step))
-        save_path = saver.save(sess, "./data/model{}.ckpt".format(step))
+            save_path = saver.save(sess, "./data/model{}.ckpt".format(step))
         print('Training Completed')
         print('Model Saved')
     else:
-        saver.restore(sess, "./data/model.ckpt")
+        saver.restore(sess, "./data/model0.ckpt")
         print('Model Restored')
 
-    # test_x, test_y = data.test.images, data.test.labels
-    test_x, test_y = data.test.next_batch(256)
-    acc = sess.run(accuracy, feed_dict={X: test_x, y: test_y})
-    print(acc)
-
+    num_batch = int(data.test.num_examples / BATCH_SIZE)
+    total = 0
+    for batch in range(num_batch):
+        test_x, test_y = data.test.next_batch(BATCH_SIZE)
+        acc = sess.run(accuracy, feed_dict={X: test_x, y: test_y})
+        total += acc
+        print('Batch {} completed with accuracy: {}'.format(batch, acc/BATCH_SIZE))
+    print('Accuracy: {}'.format(total/data.test.num_examples))
