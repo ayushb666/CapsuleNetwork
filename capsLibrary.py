@@ -17,10 +17,10 @@ from tensorflow.examples.tutorials.mnist import input_data
 data = input_data.read_data_sets('./data/mnist', one_hot=True)
 
 # Configurations
-BATCH_SIZE = 64
-EPOCHS = 1
-NUMBER_OF_ROUTING = 2
-LEARNING_RATE = 1e-3
+BATCH_SIZE = 128
+EPOCHS = 50
+NUMBER_OF_ROUTING = 3
+LEARNING_RATE = 1e-4
 
 # Parameters used similar to in research paper
 lam = 0.5
@@ -34,35 +34,38 @@ def squash(capsule):
 
 
 def routing(uhat_vector, b_values):
-    for _ in range(NUMBER_OF_ROUTING):
-        c_values = tf.nn.softmax(b_values, 1)
-        s_vector = tf.reduce_sum(tf.multiply(c_values, uhat_vector), axis=1)
-        v_vector = squash(capsule=s_vector)
-        temp = tf.expand_dims(v_vector, 1)
-        updated_values = tf.reduce_mean(tf.reduce_sum(tf.multiply(uhat_vector, temp), axis=3), axis=0)
-        updated_values = tf.expand_dims(tf.expand_dims(updated_values, 0), -1)
-        b_values = tf.add(b_values, updated_values)
+    with tf.variable_scope('Routing'):
+        for _ in range(NUMBER_OF_ROUTING):
+            c_values = tf.nn.softmax(b_values, 1)
+            s_vector = tf.reduce_sum(tf.multiply(c_values, uhat_vector), axis=1)
+            v_vector = squash(capsule=s_vector)
+            temp = tf.expand_dims(v_vector, 1)
+            updated_values = tf.reduce_mean(tf.reduce_sum(tf.multiply(uhat_vector, temp), axis=3), axis=0)
+            updated_values = tf.expand_dims(tf.expand_dims(updated_values, 0), -1)
+            b_values = tf.add(b_values, updated_values)
     return v_vector
 
 
 def primaryCaps(conv_tensor, kernel_size, no_of_kernels, stride=[1, 1], padding=0, capsule_length=8):
-    conv = tf.layers.conv2d(conv_tensor, no_of_kernels, kernel_size, stride)
-    no_of_channels = int(no_of_kernels / capsule_length)
-    feature_map_height, feature_map_width = conv.shape[1].value, conv.shape[2].value
-    capsule = tf.reshape(conv, shape=[-1, feature_map_height*feature_map_width*no_of_channels, capsule_length])
-    squashedCapsules = squash(capsule=capsule)
+    with tf.variable_scope('PrimaryCapsule'):
+        conv = tf.layers.conv2d(conv_tensor, no_of_kernels, kernel_size, stride)
+        no_of_channels = int(no_of_kernels / capsule_length)
+        feature_map_height, feature_map_width = conv.shape[1].value, conv.shape[2].value
+        capsule = tf.reshape(conv, shape=[-1, feature_map_height*feature_map_width*no_of_channels, capsule_length])
+        squashedCapsules = squash(capsule=capsule)
     return squashedCapsules
 
 
 def fully_connected_layer(u_vector, output_num_capsules, output_capsule_length):
-    number_input_capsules = u_vector.shape[1].value
-    input_capsule_length = u_vector.shape[2].value
-    u_vector = tf.expand_dims(u_vector, 2)
-    conversionMatrix = tf.Variable(tf.random_normal([number_input_capsules, input_capsule_length, output_num_capsules*output_capsule_length]))
-    conversionMatrix = tf.tile(tf.expand_dims(conversionMatrix, 0), [tf.shape(u_vector)[0], 1, 1, 1])
-    uhat_vector = tf.reshape(tf.matmul(u_vector, conversionMatrix), shape=[-1, number_input_capsules, output_num_capsules, output_capsule_length])
-    b_values = tf.Variable(tf.zeros(shape=[1, number_input_capsules, output_num_capsules, 1]))
-    v_vector = routing(uhat_vector, b_values)
+    with tf.variable_scope('FullyConnectedCapsule'):
+        number_input_capsules = u_vector.shape[1].value
+        input_capsule_length = u_vector.shape[2].value
+        u_vector = tf.expand_dims(u_vector, 2)
+        conversionMatrix = tf.Variable(tf.random_normal([number_input_capsules, input_capsule_length, output_num_capsules*output_capsule_length]))
+        conversionMatrix = tf.tile(tf.expand_dims(conversionMatrix, 0), [tf.shape(u_vector)[0], 1, 1, 1])
+        uhat_vector = tf.reshape(tf.matmul(u_vector, conversionMatrix), shape=[-1, number_input_capsules, output_num_capsules, output_capsule_length])
+        b_values = tf.Variable(tf.zeros(shape=[1, number_input_capsules, output_num_capsules, 1]))
+        v_vector = routing(uhat_vector, b_values)
     return v_vector
 
 
@@ -79,9 +82,9 @@ def reconstruction(capsule):
     return fc3
 
 
-X = tf.placeholder(dtype=tf.float32, shape=[None, 784])
-x = tf.reshape(X, shape=[-1, 28, 28, 1])
-y = tf.placeholder(dtype=tf.float32, shape=[None, 10])
+X = tf.placeholder(dtype=tf.float32, shape=[None, 784], name='InputData')
+x = tf.reshape(X, shape=[-1, 28, 28, 1], name='ModifiedInputData')
+y = tf.placeholder(dtype=tf.float32, shape=[None, 10], name='OutputValue')
 
 conv_tensor = tf.layers.conv2d(x, filters=256, kernel_size=[9, 9])
 u_vector = primaryCaps(conv_tensor, kernel_size=[9, 9], no_of_kernels=256, capsule_length=8, stride=[2, 2])
@@ -102,7 +105,8 @@ saver = tf.train.Saver()
 
 
 with tf.Session() as sess:
-    isTraining = False
+    isTraining = True
+    writer = tf.summary.FileWriter('./data/my_graph/mnist', sess.graph)
     if isTraining:
         if os.path.exists('./data/model.ckpt'):
             saver.restore(sess, "./data/model.ckpt")
@@ -116,8 +120,9 @@ with tf.Session() as sess:
                 sess.run(train, feed_dict={X: batch_x, y: batch_y})
                 print('Completed Batch: {}'.format(batch))
             print('iteration {} completed'.format(step))
-            save_path = saver.save(sess, "./data/model{}.ckpt".format(step))
+            saver.save(sess, "./data/model{}.ckpt".format(step))
         print('Training Completed')
+        saver.save(sess, './data/model.ckpt')
         print('Model Saved')
     else:
         saver.restore(sess, "./data/model0.ckpt")
