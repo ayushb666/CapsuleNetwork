@@ -70,8 +70,7 @@ def fully_connected_layer(u_vector, output_num_capsules, output_capsule_length,i
         conversionMatrix = tf.Variable(tf.random_normal([number_input_capsules, input_capsule_length, output_num_capsules*output_capsule_length]))
         conversionMatrix = tf.tile(tf.expand_dims(conversionMatrix, 0), [tf.shape(u_vector)[0], 1, 1, 1])
         uhat_vector = tf.reshape(tf.matmul(u_vector, conversionMatrix), shape=[-1, number_input_capsules, output_num_capsules, output_capsule_length])
-        b_values = tf.Variable(tf.zeros(shape=[1, number_input_capsules, output_num_capsules, 1]))
-        tf.stop_gradient(b_values)
+        b_values = tf.Variable(tf.zeros(shape=[1, number_input_capsules, output_num_capsules, 1]),trainable=False)
         v_vector = routing(uhat_vector, b_values,isTraining)
     return v_vector
 
