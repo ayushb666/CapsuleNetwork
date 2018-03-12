@@ -33,17 +33,23 @@ def squash(capsule):
     return tf.multiply(capsule, factor)
 
 
-def routing(uhat_vector, b_values):
+def routing(uhat_vector, b_values,training=True):
     with tf.variable_scope('Routing'):
-        for _ in range(NUMBER_OF_ROUTING):
+        if not training:
             c_values = tf.nn.softmax(b_values, 1)
             s_vector = tf.reduce_sum(tf.multiply(c_values, uhat_vector), axis=1)
             v_vector = squash(capsule=s_vector)
-            temp = tf.expand_dims(v_vector, 1)
-            updated_values = tf.reduce_mean(tf.reduce_sum(tf.multiply(uhat_vector, temp), axis=3), axis=0)
-            updated_values = tf.expand_dims(tf.expand_dims(updated_values, 0), -1)
-            b_values = tf.add(b_values, updated_values)
-    return v_vector
+            return v_vector
+        else:
+            for _ in range(NUMBER_OF_ROUTING):
+                c_values = tf.nn.softmax(b_values, 1)
+                s_vector = tf.reduce_sum(tf.multiply(c_values, uhat_vector), axis=1)
+                v_vector = squash(capsule=s_vector)
+                temp = tf.expand_dims(v_vector, 1)
+                updated_values = tf.reduce_mean(tf.reduce_sum(tf.multiply(uhat_vector, temp), axis=3), axis=0)
+                updated_values = tf.expand_dims(tf.expand_dims(updated_values, 0), -1)
+                b_values = tf.add(b_values, updated_values)
+            return v_vector
 
 
 def primaryCaps(conv_tensor, kernel_size, no_of_kernels, stride=[1, 1], padding=0, capsule_length=8):
@@ -56,7 +62,7 @@ def primaryCaps(conv_tensor, kernel_size, no_of_kernels, stride=[1, 1], padding=
     return squashedCapsules
 
 
-def fully_connected_layer(u_vector, output_num_capsules, output_capsule_length):
+def fully_connected_layer(u_vector, output_num_capsules, output_capsule_length,isTraining=True):
     with tf.variable_scope('FullyConnectedCapsule'):
         number_input_capsules = u_vector.shape[1].value
         input_capsule_length = u_vector.shape[2].value
@@ -65,7 +71,8 @@ def fully_connected_layer(u_vector, output_num_capsules, output_capsule_length):
         conversionMatrix = tf.tile(tf.expand_dims(conversionMatrix, 0), [tf.shape(u_vector)[0], 1, 1, 1])
         uhat_vector = tf.reshape(tf.matmul(u_vector, conversionMatrix), shape=[-1, number_input_capsules, output_num_capsules, output_capsule_length])
         b_values = tf.Variable(tf.zeros(shape=[1, number_input_capsules, output_num_capsules, 1]))
-        v_vector = routing(uhat_vector, b_values)
+        tf.stop_gradient(b_values)
+        v_vector = routing(uhat_vector, b_values,isTraining)
     return v_vector
 
 
